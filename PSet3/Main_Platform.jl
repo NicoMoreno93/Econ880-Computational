@@ -68,9 +68,9 @@ println("...TV1 : ", round(res1.M_entry,digits=3))
 println("...TV2 : ", round(res2.M_entry,digits=3))  
 # Mass of Exits:
 println("Mass of Exits: ")
-println("...Deterministic: ", round(sum((F_s.*x_prime)'*mu_mat),digits=3))  
-println("...TV1 : ", round(sum((F_s.*res1.x_prime)'*res1.mu_mat),digits=3))  
-println("...TV2 : ", round(sum((F_s.*res2.x_prime)'*res2.mu_mat),digits=3))
+println("...Deterministic: ", round(sum((F_s.*x_prime)'*mu_mat + M_entry*F_s.*x_prime*ν_s'),digits=3))  
+println("...TV1 : ", round(sum((F_s.*res1.x_prime)'*res1.mu_mat+ res1.M_entry*F_s.*res1.x_prime*ν_s'),digits=3))  
+println("...TV2 : ", round(sum((F_s.*res2.x_prime)'*res2.mu_mat+ res2.M_entry*F_s.*res1.x_prime*ν_s'),digits=3))
 # Aggregate Labor:
 println("Aggregate Labor: ")
 println("...Deterministic: ", round(sum(L_D),digits=3))  

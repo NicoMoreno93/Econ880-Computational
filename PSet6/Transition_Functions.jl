@@ -46,7 +46,7 @@ function Initialize2(res1,res2)
     L_1 = L
     K_1 = K
     μ_1 = μ
-    K_path = collect(range(exp(K_0), length=T_ , exp(K_1)))
+    K_path = log.(collect(range(exp(K_0), length=T_ , exp(K_1)))) # Improve the guess, let's do concave from start
     # collect(range(K_0, length = T_, stop = K_1)) 
     L_path = collect(range(L_0, length = T_, stop = L_1))
     Y_path = K_path.^α.*L_path.^(1-α) 

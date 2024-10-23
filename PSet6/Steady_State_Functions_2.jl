@@ -171,8 +171,8 @@ function EndoMat_create(prim::Primitives, res::Results)
     mat_aux = zeros(na,nz,N_j)  
     pop_growth = [1; (1+n_p).^(-collect(1:N_j-1))]
     pop_size   = pop_growth./sum(pop_growth)
-    mat_aux[1,1,1] = π[1]#*pop_size[1]
-    mat_aux[1,2,1] = π[2]#*pop_size[1]
+    mat_aux[1,1,1] = π[1]
+    mat_aux[1,2,1] = π[2]
     for jj=1:(N_j-1)
         if jj<=nn_w
             pol_func = Pol_Func_W[:,:,jj]
@@ -180,37 +180,28 @@ function EndoMat_create(prim::Primitives, res::Results)
                 for ii_s = 1:nz
                     a_tomorrow =  pol_func[ii_a,ii_s]   
                     for kk_s = 1:nz 
-                        row1 = argmin(abs.(a_tomorrow .- a_grid)) #+ na*(kk_s-1) # Position in grid of future asset
+                        row1 = argmin(abs.(a_tomorrow .- a_grid)) # Position in grid of future asset
                         if jj == nn_w
                             mat_aux[row1,kk_s,jj+1] += mat_aux[ii_a,ii_s,jj] # Exogenous Probability of Transitioning there
                         else
                             mat_aux[row1,kk_s,jj+1] += Π[ii_s,kk_s].*mat_aux[ii_a,ii_s,jj] # Exogenous Probability of Transitioning there
-                        # mat_aux[row,col,jj+1] = Π[ii_s,kk_s] # Exogenous Probability of Transitioning there
                         end
                     end
                 end
             end
-            # if jj == nn_w
-            #     mat_aux[:,1:nz,jj+1] .= mat_aux[:,nz,jj+1]
-            # end
         else
             pol_func = Pol_Func_R[:,jj-nn_w]
             for ii_a = 1:na
                 a_tomorrow =  pol_func[ii_a]   
                 row1 = argmin(abs.(a_tomorrow .- a_grid)) #+ na*(kk_s-1) # Position in grid of future asset
-                # if jj == nn_w+1
-                    # mat_aux[row1:row1,:,jj+1] .+= sum(mat_aux[ii_a,:,jj]) # Exogenous Probability of Transitioning there
-                # else
-                    mat_aux[row1,1,jj+1] += mat_aux[ii_a,1,jj] # Exogenous Probability of Transitioning there
-                # end
+                mat_aux[row1,1,jj+1] += mat_aux[ii_a,1,jj] # Exogenous Probability of Transitioning there
             end
         end
         pol_func = nothing
     end
-    # nz=2
     pop_size = reshape(pop_size,1,1,N_j)
     mat_aux[:,2,nn_w+1] .= 0
-    res.μ = mat_aux.*pop_size # mat_aux';
+    res.μ = mat_aux.*pop_size 
     res.V_W = V_W;
     res.V_R = V_R;
     res.Pol_Func_W = Pol_Func_W;
@@ -230,9 +221,8 @@ function Market_Clearing(prim::Primitives, res::Results, tol::Float64 = 1e-2)
     while abs(err_MC)>tol
         res,pop_size = EndoMat_create(prim,res)
         @unpack W,R,B,K,L,μ,L_Func_W = res
-        K_new = 0
         K_new = sum(reshape(a_grid,na,1,1,).*μ) 
-        L_new = sum(reshape(e_mat,1,nz,nn_w).*L_Func_W[:,:,:,tt].*μ[:,:,1:nn_w])
+        L_new = sum(reshape(e_mat,1,nz,nn_w).*L_Func_W[:,:,:].*μ[:,:,1:nn_w])
         Agg_quantities = [K-K_new, L-L_new]
         err_MC = norm(Agg_quantities,Inf)
         if abs(err_MC)>tol

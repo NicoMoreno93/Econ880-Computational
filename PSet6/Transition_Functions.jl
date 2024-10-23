@@ -5,7 +5,7 @@
 
 #keyword-enabled structure to hold model primitives
 @with_kw struct TP_Primitives
-    T_::Int64        = 35+1   # Total Number of Periods for Transition + Initial SS
+    T_::Int64        = 5+1   # Total Number of Periods for Transition + Initial SS
     K0_path::Array{Float64,1} = collect(range(3.37230586033587, length = T_, stop = 4.62094705131206)) # Initial K_path spanning from Kss with Social to Kss without Social 
     change_T::Int64 = 2#21 # Max number of iterations for excess demand
     max_iter::Float64 = 100000 # Max number of iterations for excess demand
@@ -51,7 +51,7 @@ function Initialize2(res1,res2)
     Y_path = K_path.^α.*L_path.^(1-α) 
     W_path = (1-α)*Y_path./L_path
     R_path = α*Y_path./K_path .- δ
-    θ_path = [θ*ones(change_T-1,1); zeros(T_-(change_T-1),1)]
+    θ_path = [θ*ones(change_T-1,1)*0; zeros(T_-(change_T-1),1)]
     μ_prom = (μ_0[:,1,N_r:end].+ μ_1[:,1,N_r:end])/2
     B_path = (θ_path.*W_path.*L_path)./sum(μ_prom)    
     # Pre-allocation of Hypermatrices:
@@ -189,7 +189,7 @@ function EndoMat_create_TP(TP_prim::TP_Primitives, TP_res::TP_Results,prim::Prim
         end
         μ_path[:,2,nn_w+1,tt+1] .= 0
     end
-    μ_path  = pop_size.*μ_path[:,:,:,:] # Normalize again the size of age cohorts
+    μ_path  = reshape(pop_size,1,1,N_j,1).*μ_path[:,:,:,:] # Normalize again the size of age cohorts
     println("Transition Path of Transition Functions is stored")
     TP_res.V_W_path  = V_W_path;
     TP_res.V_R_path  = V_R_path;
@@ -221,14 +221,14 @@ function Shooting_Forward(TP_prim::TP_Primitives, TP_res::TP_Results,prim::Primi
             for jj=1:N_j
                 for ii_s = 1:nz
                     for ii_a = 1:na
-                        K_new = K_new + μ[ii_a,ii_s,jj]*a_grid[ii_a]
+                        K_new += μ[ii_a,ii_s,jj]*a_grid[ii_a]
                     end
                 end
             end
             for jj=1:nn_w
                 for ii_s = 1:nz
                     for ii_a = 1:na
-                        L_new = L_new + μ[ii_a,ii_s,jj]*e_mat[ii_s,jj]*LF_W_path[ii_a,ii_s,jj,tt]
+                        L_new += μ[ii_a,ii_s,jj]*e_mat[ii_s,jj]*LF_W_path[ii_a,ii_s,jj,tt]
                     end
                 end
             end
@@ -240,14 +240,14 @@ function Shooting_Forward(TP_prim::TP_Primitives, TP_res::TP_Results,prim::Primi
         Indic_Diff = [argmax((K_path - K_path_new)./K_path); argmax((L_path - L_path_new)./L_path)]
         err_MC = norm(Agg_quantities,Inf)
         if abs(err_MC)>tol_K
-            # display(plot([L_path_new L_path],
-            #             label = ["Demand" "Supply"],
-            #             title = "Labor",
-            #             legend = :bottomright))
-            #     display(plot([K_path_new K_path],
-            #                  label = ["Demand" "Supply"],
-            #                  title = "Capital",
-            #                  legend = :bottomright))
+            display(plot([L_path_new L_path],
+                        label = ["Demand" "Supply"],
+                        title = "Labor",
+                        legend = :bottomright))
+                display(plot([K_path_new K_path],
+                             label = ["Demand" "Supply"],
+                             title = "Capital",
+                             legend = :bottomright))
             TP_res.K_path = 0.8*K_path + (1-0.8)*K_path_new
             TP_res.L_path = 0.9*L_path + (1-0.9)*L_path_new
             TP_res.W_path = (1-α).*(TP_res.K_path.^α).*(TP_res.L_path.^(1-α))./TP_res.L_path

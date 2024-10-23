@@ -5,7 +5,7 @@
 
 #keyword-enabled structure to hold model primitives
 @with_kw struct TP_Primitives
-    T_::Int64        = 5+1   # Total Number of Periods for Transition + Initial SS
+    T_::Int64        = 35+1   # Total Number of Periods for Transition + Initial SS
     K0_path::Array{Float64,1} = collect(range(3.37230586033587, length = T_, stop = 4.62094705131206)) # Initial K_path spanning from Kss with Social to Kss without Social 
     change_T::Int64 = 2#21 # Max number of iterations for excess demand
     max_iter::Float64 = 100000 # Max number of iterations for excess demand

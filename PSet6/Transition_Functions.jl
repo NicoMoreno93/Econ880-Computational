@@ -240,14 +240,14 @@ function Shooting_Forward(TP_prim::TP_Primitives, TP_res::TP_Results,prim::Primi
         Indic_Diff = [argmax((K_path - K_path_new)./K_path); argmax((L_path - L_path_new)./L_path)]
         err_MC = norm(Agg_quantities,Inf)
         if abs(err_MC)>tol_K
-            display(plot([L_path_new L_path],
-                        label = ["Demand" "Supply"],
-                        title = "Labor",
-                        legend = :bottomright))
-                display(plot([K_path_new K_path],
-                             label = ["Demand" "Supply"],
-                             title = "Capital",
-                             legend = :bottomright))
+            # display(plot([L_path_new L_path],
+            #             label = ["Demand" "Supply"],
+            #             title = "Labor",
+            #             legend = :bottomright))
+            #     display(plot([K_path_new K_path],
+            #                  label = ["Demand" "Supply"],
+            #                  title = "Capital",
+            #                  legend = :bottomright))
             TP_res.K_path = 0.8*K_path + (1-0.8)*K_path_new
             TP_res.L_path = 0.9*L_path + (1-0.9)*L_path_new
             TP_res.W_path = (1-α).*(TP_res.K_path.^α).*(TP_res.L_path.^(1-α))./TP_res.L_path

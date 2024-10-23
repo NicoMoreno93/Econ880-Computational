@@ -231,25 +231,8 @@ function Market_Clearing(prim::Primitives, res::Results, tol::Float64 = 1e-2)
         res,pop_size = EndoMat_create(prim,res)
         @unpack W,R,B,K,L,μ,L_Func_W = res
         K_new = 0
-        for jj=1:N_j
-            local nzK = nz
-            if jj >nn_w
-                nzK =1
-            end
-            for ii_s = 1:nzK
-                for ii_a = 1:na
-                    K_new = K_new + μ[ii_a,ii_s,jj]*a_grid[ii_a]
-                end
-            end
-        end
-        L_new = 0
-        for jj=1:nn_w
-            for ii_s = 1:nz
-                for ii_a = 1:na
-                    L_new = L_new + μ[ii_a,ii_s,jj]*e_mat[ii_s,jj]*L_Func_W[ii_a,ii_s,jj]
-                end
-            end
-        end
+        K_new = sum(reshape(a_grid,na,1,1,).*μ) 
+        L_new = sum(reshape(e_mat,1,nz,nn_w).*L_Func_W[:,:,:,tt].*μ[:,:,1:nn_w])
         Agg_quantities = [K-K_new, L-L_new]
         err_MC = norm(Agg_quantities,Inf)
         if abs(err_MC)>tol

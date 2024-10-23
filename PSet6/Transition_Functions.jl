@@ -5,7 +5,7 @@
 
 #keyword-enabled structure to hold model primitives
 @with_kw struct TP_Primitives
-    T_::Int64        = 35+1   # Total Number of Periods for Transition + Initial SS
+    T_::Int64        = 5+1   # Total Number of Periods for Transition + Initial SS
     K0_path::Array{Float64,1} = collect(range(3.37230586033587, length = T_, stop = 4.62094705131206)) # Initial K_path spanning from Kss with Social to Kss without Social 
     change_T::Int64 = 2#21 # Max number of iterations for excess demand
     max_iter::Float64 = 100000 # Max number of iterations for excess demand
@@ -46,7 +46,8 @@ function Initialize2(res1,res2)
     L_1 = L
     K_1 = K
     μ_1 = μ
-    K_path = collect(range(K_0, length = T_, stop = K_1)) 
+    K_path = collect(range(exp(K_0), length=T_ , exp(K_1)))
+    # collect(range(K_0, length = T_, stop = K_1)) 
     L_path = collect(range(L_0, length = T_, stop = L_1))
     Y_path = K_path.^α.*L_path.^(1-α) 
     W_path = (1-α)*Y_path./L_path
@@ -207,39 +208,23 @@ function Shooting_Forward(TP_prim::TP_Primitives, TP_res::TP_Results,prim::Primi
     @unpack θ,δ,α,η_j  = prim;
     @unpack a_grid, na, nz, N_j, nn_w, N_r,pers_,e_mat  = prim;
     @unpack μ_ss,K_path, L_path, W_path, R_path, θ_path = TP_res;
-    K_path_new = copy(K_path)
-    L_path_new = copy(L_path)
+    K_path_new = zeros(size(K_path))
+    L_path_new = zeros(size(L_path))
     err_MC = 100 
     it_count = 0
-    while abs(err_MC)>tol_K
-        μ_path,pop_size = EndoMat_create_TP(TP_prim,TP_res,prim)
+    μ_path,pop_size = EndoMat_create_TP(TP_prim,TP_res,prim)
+    while err_MC>tol_K
         @unpack LF_W_path= TP_res
         for tt=1:T_
             μ = μ_path[:,:,:,tt]
-            K_new = 0
-            L_new = 0
-            for jj=1:N_j
-                for ii_s = 1:nz
-                    for ii_a = 1:na
-                        K_new += μ[ii_a,ii_s,jj]*a_grid[ii_a]
-                    end
-                end
-            end
-            for jj=1:nn_w
-                for ii_s = 1:nz
-                    for ii_a = 1:na
-                        L_new += μ[ii_a,ii_s,jj]*e_mat[ii_s,jj]*LF_W_path[ii_a,ii_s,jj,tt]
-                    end
-                end
-            end
-            K_path_new[tt] = K_new
-            L_path_new[tt] = L_new
+            K_path_new[tt] = sum(reshape(a_grid,na,1,1,).*μ) 
+            L_path_new[tt] = sum(reshape(e_mat,1,nz,nn_w).*LF_W_path[:,:,:,tt].*μ[:,:,1:nn_w])
         end 
         @unpack K_path, L_path = TP_res;
-        Agg_quantities = [(K_path - K_path_new)./K_path, (L_path - L_path_new)./L_path]
+        Agg_quantities = [(K_path - K_path_new)./K_path ; (L_path - L_path_new)./L_path]
         Indic_Diff = [argmax((K_path - K_path_new)./K_path); argmax((L_path - L_path_new)./L_path)]
         err_MC = norm(Agg_quantities,Inf)
-        if abs(err_MC)>tol_K
+        if err_MC>tol_K
             display(plot([L_path_new L_path],
                         label = ["Demand" "Supply"],
                         title = "Labor",
@@ -254,6 +239,9 @@ function Shooting_Forward(TP_prim::TP_Primitives, TP_res::TP_Results,prim::Primi
             TP_res.R_path = α.*(TP_res.K_path.^α).*(TP_res.L_path.^(1-α))./TP_res.K_path .- δ
             TP_res.B_path = (θ_path.*TP_res.W_path.*TP_res.L_path)./sum(pop_size[1,1,N_r:end])
         end
+        μ_path,pop_size = EndoMat_create_TP(TP_prim,TP_res,prim)
+        K_path_new .= 0
+        L_path_new .= 0
         it_count = it_count+1
         println("Path Updating, Iteration # ", it_count," Norm is: ",err_MC)
         println("Largest difference is # ", Indic_Diff)

@@ -5,7 +5,7 @@
 
 #keyword-enabled structure to hold model primitives
 @with_kw struct TP_Primitives
-    T_::Int64        = 35+1   # Total Number of Periods for Transition + Initial SS
+    T_::Int64        = 30+1   # Total Number of Periods for Transition + Initial SS
     K0_path::Array{Float64,1} = collect(range(3.37230586033587, length = T_, stop = 4.62094705131206)) # Initial K_path spanning from Kss with Social to Kss without Social 
     change_T::Int64 = 2#21 # Max number of iterations for excess demand
     max_iter::Float64 = 100000 # Max number of iterations for excess demand
@@ -81,37 +81,39 @@ end
 
 # A Cake Eating Problem with Changing Cakes #1:
 function Retirees_Eating_Cake2(TP_prim::TP_Primitives,TP_res::TP_Results,prim::Primitives)
-    @unpack R_path, B_path = TP_res
-    @unpack V_R_path,PF_R_path,cR_path = TP_res 
     @unpack T_  = TP_prim     
     @unpack a_grid,AA_grid, β, σ ,γ, na,nn_r  = prim 
+    @unpack cR_path,R_path, B_path = TP_res 
     for tt=1:(T_-1)
         # These steps before next loop are always the "same", because they initialize backward induction through generations using death as a starting point
         budgetR  = repeat((1+R_path[end-tt]).*a_grid .+ B_path[end-tt],1,na) # This is the key line, this changes along transition (R and B)
         cR_path  = clamp.(budgetR - AA_grid[:,:,1],0,Inf) # Use Budget grid to find all consumptions
         cR_nn_r  = cR_path[:,1] # If a'=0, then c_R = (1+r)*a +b, which is first column of consumption grid
-        V_R_path[:,nn_r,T_-tt] = (cR_nn_r.^(γ*(1-σ)))./(1-σ) # Then V_R is simply current consumption's utility
+        TP_res.V_R_path[:,nn_r,T_-tt] = (cR_nn_r.^(γ*(1-σ)))./(1-σ) # Then V_R is simply current consumption's utility
         # Initialize the auxiliary Instant Utility= u(current consumptions):
         val = (cR_path.^(γ*(1-σ)))./(1-σ)
         # Start Iterating backwards from Age 65
         for jj =1:nn_r-1
-            V_aux            = val .+ β.*V_R_path[:,end-(jj-1),T_-(tt-1)]' # Knowing Next period's V(), add it along columns
-            V_R_path[:,end-jj,T_-tt]    = maximum(V_aux,dims=2) # Value Function one step backwards
+            V_aux            = val .+ β.*TP_res.V_R_path[:,end-(jj-1),T_-(tt-1)]' # Knowing Next period's V(), add it along columns
+            TP_res.V_R_path[:,end-jj,T_-tt]    = maximum(V_aux,dims=2) # Value Function one step backwards
             max_index0       = argmax(V_aux,dims=2)
             max_index        = reshape([i[2] for i in max_index0],na,1) #cartesian_indices = max_index0[1]
-            PF_R_path[:,end-jj,T_-tt]  = a_grid[max_index,1] 
+            TP_res.PF_R_path[:,end-jj,T_-tt]  = a_grid[max_index,1] 
         end
         println("Period Completed for Retirees ",T_-tt)
     end
-    return V_R_path, PF_R_path;
+    # TP_res.V_R_path  = V_R_path
+    # TP_res.PF_R_path = PF_R_path
+    V_R1 = TP_res.V_R_path[:,1,:]
+    return V_R1;
 end
 
 # A Cake Eating Problem with Changing Cakes  #2:
 function Workers_Eating_Cake2(TP_prim::TP_Primitives,TP_res::TP_Results,prim::Primitives)
-    V_R_path, PF_R_path = Retirees_Eating_Cake2(TP_prim,TP_res,prim)
+    V_R1 = Retirees_Eating_Cake2(TP_prim,TP_res,prim)
     @unpack T_  = TP_prim  ;
     @unpack β, σ ,γ, Π ,e_mat,a_grid,AA_grid, na, nz, nn_w = prim;
-    @unpack V_W_path, PF_W_path,LF_W_path, W_path, R_path,θ_path = TP_res; 
+    @unpack W_path, R_path,θ_path = TP_res; 
     Eval_func = copy(AA_grid)
     e_mat_aux = reshape(e_mat',1,nn_w,nz)
     for tt=1:(T_-1)
@@ -121,12 +123,12 @@ function Workers_Eating_Cake2(TP_prim::TP_Primitives,TP_res::TP_Results,prim::Pr
         cW  = clamp.(W_path[end-tt]*(1−θ_path[end-tt]).*e_aux.*L .+ (1 + R_path[end-tt]).*a_grid .− AA_grid,0,Inf)
         # Initialize the auxiliary Instant Utility= u(current consumptions): 
         val = ((cW.^γ.*(1 .-L).^(1-γ)).^(1-σ))./(1-σ)
-        V_aux       = val .+ β.*V_R_path[:,1,T_-(tt-1)]'
-        V_W_path[:,:,nn_w,T_-tt] = reshape(maximum(V_aux,dims=2),na,nz)
+        V_aux       = val .+ β.*V_R1[:,T_-(tt-1)]'
+        TP_res.V_W_path[:,:,nn_w,T_-tt] = reshape(maximum(V_aux,dims=2),na,nz)
         max_index0    = argmax(V_aux,dims=2)
         max_index     = reshape([i[2] for i in max_index0],na,nz) #cartesian_indices = max_index0[1]
-        PF_W_path[:,:,nn_w,T_-tt]  = [a_grid[max_index[:,1]] a_grid[max_index[:,2]]] #
-        LF_W_path[:,:,nn_w,T_-tt]  = reshape(L[max_index0],na,nz)
+        TP_res.PF_W_path[:,:,nn_w,T_-tt]  = [a_grid[max_index[:,1]] a_grid[max_index[:,2]]] #
+        TP_res.LF_W_path[:,:,nn_w,T_-tt]  = reshape(L[max_index0],na,nz)
         # # Start Iterating backwards from Age 45
         for jj =1:nn_w-1
             # Solve the Static Problem of each Cohort
@@ -135,25 +137,25 @@ function Workers_Eating_Cake2(TP_prim::TP_Primitives,TP_res::TP_Results,prim::Pr
             cW  = clamp.(W_path[end-tt]*(1−θ_path[end-tt]).*e_aux.*L .+ (1 + R_path[end-tt]).*a_grid .− AA_grid,0,Inf)
             val = ((cW.^γ.*(1 .-L).^(1-γ)).^(1-σ))./(1-σ)
             # Compute the Expected Value of Future Value Function:
-            Eval_func[:,:,1] .= (V_W_path[:,:,end-(jj-1),T_-(tt-1)] *Π[1,:])' 
-            Eval_func[:,:,2] .= (V_W_path[:,:,end-(jj-1),T_-(tt-1)] *Π[2,:])'
+            Eval_func[:,:,1] .= (TP_res.V_W_path[:,:,end-(jj-1),T_-(tt-1)] *Π[1,:])' 
+            Eval_func[:,:,2] .= (TP_res.V_W_path[:,:,end-(jj-1),T_-(tt-1)] *Π[2,:])'
             V_aux             = val .+ β.*Eval_func  # Knowing Next period's V(), add it along columns
-            V_W_path[:,:,end-jj,T_-tt]  = maximum(V_aux,dims=2) # Value Function one step backwards, matrix with z's by column
+            TP_res.V_W_path[:,:,end-jj,T_-tt]  = maximum(V_aux,dims=2) # Value Function one step backwards, matrix with z's by column
             max_index0       = argmax(V_aux,dims=2)
             max_index        = reshape([i[2] for i in max_index0],na,nz) #cartesian_indices = max_index0[1]
-            PF_W_path[:,:,end-jj,T_-tt]  = [a_grid[max_index[:,1]] a_grid[max_index[:,2]]] #
-            LF_W_path[:,:,end-jj,T_-tt] = reshape(L[max_index0],na,nz)
+            TP_res.PF_W_path[:,:,end-jj,T_-tt]  = [a_grid[max_index[:,1]] a_grid[max_index[:,2]]] #
+            TP_res.LF_W_path[:,:,end-jj,T_-tt] = reshape(L[max_index0],na,nz)
         end
         println("Period Completed for Workers ",T_-tt)
     end
-    return V_W_path, PF_W_path,V_R_path, PF_R_path,LF_W_path;
+    # return V_W_path, PF_W_path,V_R_path, PF_R_path,LF_W_path;
 end
 
 #--------------------------------------------#
 #           DISTRIBUTIONS
 #--------------------------------------------#
 function EndoMat_create_TP(TP_prim::TP_Primitives, TP_res::TP_Results,prim::Primitives) 
-    V_W_path, PF_W_path,V_R_path, PF_R_path,LF_W_path = Workers_Eating_Cake2(TP_prim,TP_res,prim);
+    Workers_Eating_Cake2(TP_prim,TP_res,prim);
     @unpack a_grid, na, nz,N_j,nn_w,n_p, Π, π   = prim
     @unpack T_  = TP_prim
     @unpack μ_path,PF_R_path,PF_W_path  = TP_res
@@ -192,11 +194,7 @@ function EndoMat_create_TP(TP_prim::TP_Primitives, TP_res::TP_Results,prim::Prim
     end
     μ_path  = reshape(pop_size,1,1,N_j,1).*μ_path[:,:,:,:] # Normalize again the size of age cohorts
     println("Transition Path of Transition Functions is stored")
-    TP_res.V_W_path  = V_W_path;
-    TP_res.V_R_path  = V_R_path;
-    TP_res.PF_W_path = PF_W_path;
-    TP_res.PF_R_path = PF_R_path;
-    TP_res.LF_W_path = LF_W_path;
+    TP_res.μ_path = μ_path
     return μ_path,pop_size;
 end
 
@@ -212,34 +210,34 @@ function Shooting_Forward(TP_prim::TP_Primitives, TP_res::TP_Results,prim::Primi
     L_path_new = zeros(size(L_path))
     err_MC = 100 
     it_count = 0
-    μ_path,pop_size = EndoMat_create_TP(TP_prim,TP_res,prim)
+    # μ_path,pop_size = EndoMat_create_TP(TP_prim,TP_res,prim)
     while err_MC>tol_K
+        μ_path,pop_size = EndoMat_create_TP(TP_prim,TP_res,prim)
         @unpack LF_W_path= TP_res
         for tt=1:T_
             μ = μ_path[:,:,:,tt]
             K_path_new[tt] = sum(reshape(a_grid,na,1,1,).*μ) 
             L_path_new[tt] = sum(reshape(e_mat,1,nz,nn_w).*LF_W_path[:,:,:,tt].*μ[:,:,1:nn_w])
         end 
-        @unpack K_path, L_path = TP_res;
-        Agg_quantities = [(K_path - K_path_new)./K_path ; (L_path - L_path_new)./L_path]
-        Indic_Diff = [argmax((K_path - K_path_new)./K_path); argmax((L_path - L_path_new)./L_path)]
+        # @unpack K_path, L_path = TP_res;
+        Agg_quantities = [(TP_res.K_path - K_path_new)./TP_res.K_path ; (TP_res.L_path - L_path_new)./TP_res.L_path]
+        Indic_Diff = [argmax((TP_res.K_path - K_path_new)./TP_res.K_path); argmax((TP_res.L_path - L_path_new)./TP_res.L_path)]
         err_MC = norm(Agg_quantities,Inf)
         if err_MC>tol_K
-            display(plot([L_path_new L_path],
+            display(plot([L_path_new TP_res.L_path],
                         label = ["Demand" "Supply"],
                         title = "Labor",
                         legend = :bottomright))
-                display(plot([K_path_new K_path],
+                display(plot([K_path_new TP_res.K_path],
                              label = ["Demand" "Supply"],
                              title = "Capital",
                              legend = :bottomright))
-            TP_res.K_path = 0.8*K_path + (1-0.8)*K_path_new
-            TP_res.L_path = 0.9*L_path + (1-0.9)*L_path_new
+            TP_res.K_path = 0.5*K_path + (1-0.5)*K_path_new
+            TP_res.L_path = 0.5*L_path + (1-0.5)*L_path_new
             TP_res.W_path = (1-α).*(TP_res.K_path.^α).*(TP_res.L_path.^(1-α))./TP_res.L_path
             TP_res.R_path = α.*(TP_res.K_path.^α).*(TP_res.L_path.^(1-α))./TP_res.K_path .- δ
             TP_res.B_path = (θ_path.*TP_res.W_path.*TP_res.L_path)./sum(pop_size[1,1,N_r:end])
         end
-        μ_path,pop_size = EndoMat_create_TP(TP_prim,TP_res,prim)
         K_path_new .= 0
         L_path_new .= 0
         it_count = it_count+1
@@ -249,6 +247,27 @@ function Shooting_Forward(TP_prim::TP_Primitives, TP_res::TP_Results,prim::Primi
     println("Norm is: ",err_MC) 
     println("Aggregate Paths and Solutions are stored")
     println("Shooting Algorithm Done!")
+    return TP_res
+end
+
+function Adjusting_T(TP_prim::TP_Primitives, TP_res::TP_Results,prim::Primitives,res2) 
+    @unpack K = res2
+    K_1 = K
+    err_T = 100 
+    it_count = 0
+    # μ_path,pop_size = EndoMat_create_TP(TP_prim,TP_res,prim)
+    while err_T>tol_T
+        TP_res = Shooting_Forward(TP_prim, TP_res,prim)
+        @unpack K_path = TP_res;
+        err_T = norm(K_path[end]-K_1,Inf)
+        @unpack T_ = TP_prim
+        T_0 = T_
+        TP_prim = TP_Primitives(T_=T_0+1)
+        it_count = it_count+1
+        println("Horizon Updating, Iteration # ", it_count," Norm is: ",err_T)
+    end
+    println("Norm is: ",err_T) 
+    println("Everything converged!")
     return TP_res
 end
 

@@ -232,6 +232,13 @@ function Market_Clearing(prim::Primitives, res::Results, tol::Float64 = 1e-2)
             res.W = (1-α)*Y/res.L
             res.R = α*Y/res.K - δ
             res.B = (θ*res.W*res.L)./sum(pop_size[1,1,N_r:end])
+        else
+            res.K = K_new
+            res.L = L_new
+            Y = (res.K^α)*(res.L^(1-α))
+            res.W = (1-α)*Y/res.L
+            res.R = α*Y/res.K - δ
+            res.B = (θ*res.W*res.L)./sum(pop_size[1,1,N_r:end])
         end
         it_count = it_count+1
         println("Iteration # ", it_count," Norm is: ",err_MC)

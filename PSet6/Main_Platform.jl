@@ -25,7 +25,7 @@ res1 = Result_Structure["RES_1"];
 res2 = Result_Structure["RES_2"];
 end
 #--------------------------------------------#
-#       Run and Save Steady States
+#       Run and Save Transition Paths
 #--------------------------------------------#
 if Run_SS ==0
 # Load the dictionary with SS info from the file

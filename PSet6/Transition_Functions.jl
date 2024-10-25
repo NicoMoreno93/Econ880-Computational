@@ -1,13 +1,14 @@
 # Author: Nicolas Moreno
+# Date: 24/10/2024
 #--------------------------------------------#
 #           PREAMBLE!
 #--------------------------------------------#
 
 #keyword-enabled structure to hold model primitives
 @with_kw struct TP_Primitives
-    T_::Int64        = 30+1   # Total Number of Periods for Transition + Initial SS
+    T_::Int64        = 50+1   # Total Number of Periods for Transition + Initial SS
     K0_path::Array{Float64,1} = collect(range(3.37230586033587, length = T_, stop = 4.62094705131206)) # Initial K_path spanning from Kss with Social to Kss without Social 
-    change_T::Int64 = 2#21 # Max number of iterations for excess demand
+    change_T::Int64 = 2 # Max number of iterations for excess demand
     max_iter::Float64 = 100000 # Max number of iterations for excess demand
     tol_K::Float64 = 1e-2 # Persistence of the updating
     tol_T::Float64 = 1e-3 # Persistence of the updating
@@ -47,12 +48,11 @@ function Initialize2(res1,res2)
     K_1 = K
     μ_1 = μ
     K_path = log.(collect(range(exp(K_0), length=T_ , exp(K_1)))) # Improve the guess, let's do concave from start
-    # collect(range(K_0, length = T_, stop = K_1)) 
     L_path = collect(range(L_0, length = T_, stop = L_1))
     Y_path = K_path.^α.*L_path.^(1-α) 
     W_path = (1-α)*Y_path./L_path
     R_path = α*Y_path./K_path .- δ
-    θ_path = [θ*ones(change_T-1,1)*0; zeros(T_-(change_T-1),1)]
+    θ_path = [θ*ones(change_T-1,1); zeros(T_-(change_T-1),1)]
     μ_prom = (μ_0[:,1,N_r:end].+ μ_1[:,1,N_r:end])/2
     B_path = (θ_path.*W_path.*L_path)./sum(μ_prom)    
     # Pre-allocation of Hypermatrices:
@@ -102,9 +102,7 @@ function Retirees_Eating_Cake2(TP_prim::TP_Primitives,TP_res::TP_Results,prim::P
         end
         println("Period Completed for Retirees ",T_-tt)
     end
-    # TP_res.V_R_path  = V_R_path
-    # TP_res.PF_R_path = PF_R_path
-    V_R1 = TP_res.V_R_path[:,1,:]
+    V_R1 = TP_res.V_R_path[:,1,:] # This is only thing we need to do workers problem, saves memory
     return V_R1;
 end
 
@@ -148,14 +146,12 @@ function Workers_Eating_Cake2(TP_prim::TP_Primitives,TP_res::TP_Results,prim::Pr
         end
         println("Period Completed for Workers ",T_-tt)
     end
-    # return V_W_path, PF_W_path,V_R_path, PF_R_path,LF_W_path;
 end
 
 #--------------------------------------------#
 #           DISTRIBUTIONS
 #--------------------------------------------#
 function EndoMat_create_TP(TP_prim::TP_Primitives, TP_res::TP_Results,prim::Primitives) 
-    Workers_Eating_Cake2(TP_prim,TP_res,prim);
     @unpack a_grid, na, nz,N_j,nn_w,n_p, Π, π   = prim
     @unpack T_  = TP_prim
     @unpack μ_path,PF_R_path,PF_W_path  = TP_res
@@ -205,35 +201,29 @@ function Shooting_Forward(TP_prim::TP_Primitives, TP_res::TP_Results,prim::Primi
     @unpack T_,tol_K= TP_prim;
     @unpack θ,δ,α,η_j  = prim;
     @unpack a_grid, na, nz, N_j, nn_w, N_r,pers_,e_mat  = prim;
-    @unpack μ_ss,K_path, L_path, W_path, R_path, θ_path = TP_res;
-    K_path_new = zeros(size(K_path))
-    L_path_new = zeros(size(L_path))
+    K_path_new = zeros(T_,1)
+    L_path_new = zeros(T_,1)
     err_MC = 100 
     it_count = 0
-    # μ_path,pop_size = EndoMat_create_TP(TP_prim,TP_res,prim)
     while err_MC>tol_K
+        Workers_Eating_Cake2(TP_prim,TP_res,prim);
         μ_path,pop_size = EndoMat_create_TP(TP_prim,TP_res,prim)
         @unpack LF_W_path= TP_res
+        # Update Aggregate Paths:
         for tt=1:T_
             μ = μ_path[:,:,:,tt]
             K_path_new[tt] = sum(reshape(a_grid,na,1,1,).*μ) 
             L_path_new[tt] = sum(reshape(e_mat,1,nz,nn_w).*LF_W_path[:,:,:,tt].*μ[:,:,1:nn_w])
         end 
-        # @unpack K_path, L_path = TP_res;
         Agg_quantities = [(TP_res.K_path - K_path_new)./TP_res.K_path ; (TP_res.L_path - L_path_new)./TP_res.L_path]
-        Indic_Diff = [argmax((TP_res.K_path - K_path_new)./TP_res.K_path); argmax((TP_res.L_path - L_path_new)./TP_res.L_path)]
+        Indic_Diff = [argmax(abs.((TP_res.K_path - K_path_new)./TP_res.K_path)); argmax(abs.((TP_res.L_path - L_path_new)./TP_res.L_path))]
         err_MC = norm(Agg_quantities,Inf)
+        # Updating as a strict convex combination of last update and new one:
         if err_MC>tol_K
-            display(plot([L_path_new TP_res.L_path],
-                        label = ["Demand" "Supply"],
-                        title = "Labor",
-                        legend = :bottomright))
-                display(plot([K_path_new TP_res.K_path],
-                             label = ["Demand" "Supply"],
-                             title = "Capital",
-                             legend = :bottomright))
-            TP_res.K_path = 0.5*K_path + (1-0.5)*K_path_new
-            TP_res.L_path = 0.5*L_path + (1-0.5)*L_path_new
+            display(plot([L_path_new TP_res.L_path], label = ["New Guess" "Old Guess"],title = "Labor", legend = :bottomright))
+            display(plot([K_path_new TP_res.K_path],label = ["New Guess" "Old Guess"], title = "Capital", legend = :bottomright))
+            TP_res.K_path = 0.5*TP_res.K_path + (1-0.5)*K_path_new
+            TP_res.L_path = 0.5*TP_res.L_path + (1-0.5)*L_path_new
             TP_res.W_path = (1-α).*(TP_res.K_path.^α).*(TP_res.L_path.^(1-α))./TP_res.L_path
             TP_res.R_path = α.*(TP_res.K_path.^α).*(TP_res.L_path.^(1-α))./TP_res.K_path .- δ
             TP_res.B_path = (θ_path.*TP_res.W_path.*TP_res.L_path)./sum(pop_size[1,1,N_r:end])
@@ -250,7 +240,7 @@ function Shooting_Forward(TP_prim::TP_Primitives, TP_res::TP_Results,prim::Primi
     return TP_res
 end
 
-function Adjusting_T(TP_prim::TP_Primitives, TP_res::TP_Results,prim::Primitives,res2) 
+function Adjusting_T(TP_prim::TP_Primitives, TP_res::TP_Results,prim::Primitives,res1,res2) 
     @unpack K = res2
     K_1 = K
     err_T = 100 
@@ -259,33 +249,38 @@ function Adjusting_T(TP_prim::TP_Primitives, TP_res::TP_Results,prim::Primitives
     while err_T>tol_T
         TP_res = Shooting_Forward(TP_prim, TP_res,prim)
         @unpack K_path = TP_res;
-        err_T = norm(K_path[end]-K_1,Inf)
+        err_T = norm((K_path[end:end]-K_1)/K_1,Inf)
         @unpack T_ = TP_prim
         T_0 = T_
         TP_prim = TP_Primitives(T_=T_0+1)
+        # TP_prim, TP_res = Initialize2(res1,res2)
         it_count = it_count+1
         println("Horizon Updating, Iteration # ", it_count," Norm is: ",err_T)
     end
     println("Norm is: ",err_T) 
     println("Everything converged!")
-    return TP_res
+    return TP_res;
 end
 
 #--------------------------------------------#
 #           WELFARE CALCULATIONS
 #--------------------------------------------#
 function Compute_Welfare2(prim::Primitives, TP_res::TP_Results,res1) 
-    @unpack V_W_path = TP_res
-    @unpack V_W , μ = res1
+    @unpack V_W_path, V_R_path = TP_res
+    @unpack V_W, V_R , μ = res1
     @unpack γ, σ  = prim
     # Consumption Equivalent Variation at time 0:
-    CEV = (V_W_path[:,:,:,1]./V_W_path).^(1/(γ*(1-σ)))
+    CEV_W = (V_W_path[:,:,:,1]./V_W[:,:,:]).^(1/(γ*(1-σ)))
+    CEV_R = (V_R_path[:,:,1]./V_R).^(1/(γ*(1-σ)))
+    CEV_R = reshape(CEV_R,size(CEV_R,1),1,size(CEV_R,2))
+    CEV_R = cat(CEV_R,zeros(size(CEV_R)),dims=2)
+    CEV   = cat(CEV_W,CEV_R,dims=3)
     # Voting  Share:
     Vote_yes   = CEV.>1
-    Vote_share =  sum(Vote_yes.*μ)*100
+    Vote_share = sum(Vote_yes.*μ)*100
     println("Consumption Equivalent Variation for first generation today: ",CEV[1])
     println("Share of Population in favor (%): ", Vote_share)
     println("Done!")
-    return CEV, Vote_share
+    return CEV, Vote_share;
 end
 
